@@ -147,9 +147,6 @@ extern char *alloca ();
 
 #define CP_STATIC_IF_GLIBCPP_V3 static
 
-#define cplus_demangle_init_info d_init_info
-static void d_init_info (const char *, int, size_t, struct d_info *);
-
 #else /* ! defined(IN_GLIBCPP_V3) */
 #define CP_STATIC_IF_GLIBCPP_V3
 #endif /* ! defined(IN_GLIBCPP_V3) */
@@ -176,6 +173,8 @@ static char *d_print (int, struct demangle_component *, int, size_t *);
 
 static int d_print_callback (int, struct demangle_component *,
                              demangle_callbackref, void *);
+
+static void d_init_info (const char *, int, size_t, struct d_info *);
 
 /* See if the compiler supports dynamic arrays.  */
 
@@ -6381,10 +6380,13 @@ d_print_conversion (struct d_print_info *dpi, int options,
 /* Initialize the information structure we use to pass around
    information.  */
 
-CP_STATIC_IF_GLIBCPP_V3
+/* This version replaces the old cplus_demangle_init_info to d_init_info 
+   for separating external and internal recursive entry points. */
+
+static
 void
-cplus_demangle_init_info (const char *mangled, int options, size_t len,
-                          struct d_info *di)
+d_init_info (const char *mangled, int options, size_t len,
+             struct d_info *di)
 {
   di->s = mangled;
   di->send = mangled + len;
@@ -6449,7 +6451,7 @@ d_demangle_callback (const char *mangled, int options,
   di.unresolved_name_state = 1;
 
  again:
-  cplus_demangle_init_info (mangled, options, strlen (mangled), &di);
+  d_init_info (mangled, options, strlen (mangled), &di);
 
   /* PR 87675 - Check for a mangled string that is so long
      that we do not have enough stack space to demangle it.  */
@@ -6751,7 +6753,7 @@ is_ctor_or_dtor (const char *mangled,
   *ctor_kind = (enum gnu_v3_ctor_kinds) 0;
   *dtor_kind = (enum gnu_v3_dtor_kinds) 0;
 
-  cplus_demangle_init_info (mangled, DMGL_GNU_V3, strlen (mangled), &di);
+  d_init_info (mangled, DMGL_GNU_V3, strlen (mangled), &di);
 
   {
 #ifdef CP_DYNAMIC_ARRAYS
@@ -7096,6 +7098,16 @@ cplus_demangle_print_callback (int options,
                                demangle_callbackref callback, void *opaque)
 {
   return d_print_callback(options,dc,callback,opaque);
+}
+
+/* A wrapper for d_init_info for the purpose of separating external
+   and internal recursive entry points. */
+
+void
+cplus_demangle_init_info (const char *mangled, int options, size_t len,
+                          struct d_info *di)
+{
+  d_init_info(mangled,options,len,di);
 }
 
 #endif
