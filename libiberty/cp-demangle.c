@@ -147,11 +147,6 @@ extern char *alloca ();
 
 #define CP_STATIC_IF_GLIBCPP_V3 static
 
-#define cplus_demangle_fill_ctor d_fill_ctor
-static int
-d_fill_ctor (struct demangle_component *, enum gnu_v3_ctor_kinds,
-             struct demangle_component *);
-
 #define cplus_demangle_fill_dtor d_fill_dtor
 static int
 d_fill_dtor (struct demangle_component *, enum gnu_v3_dtor_kinds,
@@ -181,6 +176,10 @@ static int d_fill_name (struct demangle_component *, const char *, int);
 static int
 d_fill_extended_operator (struct demangle_component *, int,
                           struct demangle_component *);
+
+static int
+d_fill_ctor (struct demangle_component *, enum gnu_v3_ctor_kinds,
+             struct demangle_component *);
 
 /* See if the compiler supports dynamic arrays.  */
 
@@ -893,11 +892,14 @@ d_fill_extended_operator (struct demangle_component *p, int args,
 
 /* Fill in a DEMANGLE_COMPONENT_CTOR.  */
 
-CP_STATIC_IF_GLIBCPP_V3
+/* This version replaces the old cplus_demangle_fill_ctor to d_fill_ctor 
+   for separating external and internal recursive entry points. */
+
+static
 int
-cplus_demangle_fill_ctor (struct demangle_component *p,
-                          enum gnu_v3_ctor_kinds kind,
-                          struct demangle_component *name)
+d_fill_ctor (struct demangle_component *p,
+             enum gnu_v3_ctor_kinds kind,
+             struct demangle_component *name)
 {
   if (p == NULL
       || name == NULL
@@ -1153,7 +1155,7 @@ d_make_ctor (struct d_info *di, enum gnu_v3_ctor_kinds kind,
   struct demangle_component *p;
 
   p = d_make_empty (di);
-  if (! cplus_demangle_fill_ctor (p, kind, name))
+  if (! d_fill_ctor (p, kind, name))
     return NULL;
   return p;
 }
@@ -7035,5 +7037,16 @@ cplus_demangle_fill_extended_operator (struct demangle_component *p, int args,
 {
   return d_fill_extended_operator(p,args,name);
 }
+
+/* A wrapper for d_fill_ctor for the purpose of separating external
+   and internal recursive entry points. */
+
+int
+cplus_demangle_fill_ctor (struct demangle_component *p,
+                          enum gnu_v3_ctor_kinds kind,
+                          struct demangle_component *name)
+{
+  return d_fill_ctor(p,kind,name);
+}        
 
 #endif
