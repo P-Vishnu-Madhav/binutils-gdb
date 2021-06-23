@@ -168,9 +168,6 @@ d_fill_dtor (struct demangle_component *, enum gnu_v3_dtor_kinds,
 #define cplus_demangle_mangled_name d_mangled_name
 static struct demangle_component *d_mangled_name (struct d_info *, int);
 
-#define cplus_demangle_type d_type
-static struct demangle_component *d_type (struct d_info *);
-
 #define cplus_demangle_print d_print
 static char *d_print (int, struct demangle_component *, int, size_t *);
 
@@ -184,6 +181,8 @@ static void d_init_info (const char *, int, size_t, struct d_info *);
 #else /* ! defined(IN_GLIBCPP_V3) */
 #define CP_STATIC_IF_GLIBCPP_V3
 #endif /* ! defined(IN_GLIBCPP_V3) */
+
+static struct demangle_component *d_type (struct d_info *);
 
 /* See if the compiler supports dynamic arrays.  */
 
@@ -1565,7 +1564,7 @@ d_prefix (struct d_info *di, int subst)
 	  char peek2 = d_peek_next_char (di);
 	  if (peek2 == 'T' || peek2 == 't')
 	    /* Decltype.  */
-	    dc = cplus_demangle_type (di);
+	    dc = d_type (di);
 	  else
 	    /* Destructor name.  */
 	    dc = d_unqualified_name (di);
@@ -1801,7 +1800,7 @@ d_identifier (struct d_info *di, int len)
 
 #define NL(s) s, (sizeof s) - 1
 
-CP_STATIC_IF_GLIBCPP_V3
+CP_STATIC_IF_GLIBCPP_V3 
 const struct demangle_operator_info cplus_demangle_operators[] =
 {
   { "aN", NL ("&="),        2 },
@@ -1896,7 +1895,7 @@ d_operator_name (struct d_info *di)
       struct demangle_component *res;
 
       di->is_conversion = ! di->is_expression;
-      type = cplus_demangle_type (di);
+      type = d_type (di);
       if (di->is_conversion)
 	res = d_make_comp (di, DEMANGLE_COMPONENT_CONVERSION, type, NULL);
       else
@@ -2061,17 +2060,17 @@ d_special_name (struct d_info *di)
 	case 'V':
 	  di->expansion -= 5;
 	  return d_make_comp (di, DEMANGLE_COMPONENT_VTABLE,
-			      cplus_demangle_type (di), NULL);
+			      d_type (di), NULL);
 	case 'T':
 	  di->expansion -= 10;
 	  return d_make_comp (di, DEMANGLE_COMPONENT_VTT,
-			      cplus_demangle_type (di), NULL);
+			      d_type (di), NULL);
 	case 'I':
 	  return d_make_comp (di, DEMANGLE_COMPONENT_TYPEINFO,
-			      cplus_demangle_type (di), NULL);
+			      d_type (di), NULL);
 	case 'S':
 	  return d_make_comp (di, DEMANGLE_COMPONENT_TYPEINFO_NAME,
-			      cplus_demangle_type (di), NULL);
+			      d_type (di), NULL);
 
 	case 'h':
 	  if (! d_call_offset (di, 'h'))
@@ -2099,13 +2098,13 @@ d_special_name (struct d_info *di)
 	    int offset;
 	    struct demangle_component *base_type;
 
-	    derived_type = cplus_demangle_type (di);
+	    derived_type = d_type (di);
 	    offset = d_number (di);
 	    if (offset < 0)
 	      return NULL;
 	    if (! d_check_char (di, '_'))
 	      return NULL;
-	    base_type = cplus_demangle_type (di);
+	    base_type = d_type (di);
 	    /* We don't display the offset.  FIXME: We should display
 	       it in verbose mode.  */
 	    di->expansion += 5;
@@ -2115,10 +2114,10 @@ d_special_name (struct d_info *di)
 
 	case 'F':
 	  return d_make_comp (di, DEMANGLE_COMPONENT_TYPEINFO_FN,
-			      cplus_demangle_type (di), NULL);
+			      d_type (di), NULL);
 	case 'J':
 	  return d_make_comp (di, DEMANGLE_COMPONENT_JAVA_CLASS,
-			      cplus_demangle_type (di), NULL);
+			      d_type (di), NULL);
 
 	case 'H':
 	  return d_make_comp (di, DEMANGLE_COMPONENT_TLS_INIT,
@@ -2275,7 +2274,7 @@ d_ctor_dtor_name (struct d_info *di)
 	d_advance (di, 2);
 
 	if (inheriting)
-	  cplus_demangle_type (di);
+	  d_type (di);
 
 	return d_make_ctor (di, kind, di->last_name);
       }
@@ -2395,9 +2394,12 @@ cplus_demangle_builtin_types[D_BUILTIN_TYPE_COUNT] =
 	     D_PRINT_DEFAULT },
 };
 
-CP_STATIC_IF_GLIBCPP_V3
+/* This version replaces the old cplus_demangle_type to d_type 
+   for separating external and internal recursive entry points. */
+
+static
 struct demangle_component *
-cplus_demangle_type (struct d_info *di)
+d_type (struct d_info *di)
 {
   char peek;
   struct demangle_component *ret;
@@ -2433,7 +2435,7 @@ cplus_demangle_type (struct d_info *di)
 	  *pret = d_function_type (di);
 	}
       else
-	*pret = cplus_demangle_type (di);
+	*pret = d_type (di);
       if (!*pret)
 	return NULL;
       if ((*pret)->type == DEMANGLE_COMPONENT_RVALUE_REFERENCE_THIS
@@ -2590,31 +2592,31 @@ cplus_demangle_type (struct d_info *di)
     case 'O':
       d_advance (di, 1);
       ret = d_make_comp (di, DEMANGLE_COMPONENT_RVALUE_REFERENCE,
-                         cplus_demangle_type (di), NULL);
+                         d_type (di), NULL);
       break;
 
     case 'P':
       d_advance (di, 1);
       ret = d_make_comp (di, DEMANGLE_COMPONENT_POINTER,
-			 cplus_demangle_type (di), NULL);
+			 d_type (di), NULL);
       break;
 
     case 'R':
       d_advance (di, 1);
       ret = d_make_comp (di, DEMANGLE_COMPONENT_REFERENCE,
-                         cplus_demangle_type (di), NULL);
+                         d_type (di), NULL);
       break;
 
     case 'C':
       d_advance (di, 1);
       ret = d_make_comp (di, DEMANGLE_COMPONENT_COMPLEX,
-			 cplus_demangle_type (di), NULL);
+			 d_type(di), NULL);
       break;
 
     case 'G':
       d_advance (di, 1);
       ret = d_make_comp (di, DEMANGLE_COMPONENT_IMAGINARY,
-			 cplus_demangle_type (di), NULL);
+			 d_type (di), NULL);
       break;
 
     case 'U':
@@ -2624,7 +2626,7 @@ cplus_demangle_type (struct d_info *di)
 	ret = d_make_comp (di, DEMANGLE_COMPONENT_TEMPLATE, ret,
 			   d_template_args (di));
       ret = d_make_comp (di, DEMANGLE_COMPONENT_VENDOR_TYPE_QUAL,
-			 cplus_demangle_type (di), ret);
+			 d_type (di), ret);
       break;
 
     case 'D':
@@ -2646,7 +2648,7 @@ cplus_demangle_type (struct d_info *di)
 	case 'p':
 	  /* Pack expansion.  */
 	  ret = d_make_comp (di, DEMANGLE_COMPONENT_PACK_EXPANSION,
-			     cplus_demangle_type (di), NULL);
+			     d_type (di), NULL);
 	  can_subst = 1;
 	  break;
 
@@ -2702,7 +2704,7 @@ cplus_demangle_type (struct d_info *di)
 	  if ((ret->u.s_fixed.accum = IS_DIGIT (d_peek_char (di))))
 	    /* For demangling we don't care about the bits.  */
 	    d_number (di);
-	  ret->u.s_fixed.length = cplus_demangle_type (di);
+	  ret->u.s_fixed.length = d_type (di);
 	  if (ret->u.s_fixed.length == NULL)
 	    return NULL;
 	  d_number (di);
@@ -2935,7 +2937,7 @@ d_parmlist (struct d_info *di)
 	  && d_peek_next_char (di) == 'E')
 	/* Function ref-qualifier, not a ref prefix for a parameter type.  */
 	break;
-      type = cplus_demangle_type (di);
+      type = d_type (di);
       if (type == NULL)
 	return NULL;
       *ptl = d_make_comp (di, DEMANGLE_COMPONENT_ARGLIST, type, NULL);
@@ -2982,7 +2984,7 @@ d_bare_function_type (struct d_info *di, int has_return_type)
 
   if (has_return_type)
     {
-      return_type = cplus_demangle_type (di);
+      return_type = d_type(di);
       if (return_type == NULL)
 	return NULL;
     }
@@ -3047,7 +3049,7 @@ d_array_type (struct d_info *di)
     return NULL;
 
   return d_make_comp (di, DEMANGLE_COMPONENT_ARRAY_TYPE, dim,
-		      cplus_demangle_type (di));
+		      d_type (di));
 }
 
 /* <vector-type> ::= Dv <number> _ <type>
@@ -3075,7 +3077,7 @@ d_vector_type (struct d_info *di)
     return NULL;
 
   return d_make_comp (di, DEMANGLE_COMPONENT_VECTOR_TYPE, dim,
-		      cplus_demangle_type (di));
+		      d_type (di));
 }
 
 /* <pointer-to-member-type> ::= M <(class) type> <(member) type>  */
@@ -3089,7 +3091,7 @@ d_pointer_to_member_type (struct d_info *di)
   if (! d_check_char (di, 'M'))
     return NULL;
 
-  cl = cplus_demangle_type (di);
+  cl = d_type (di);
   if (cl == NULL)
     return NULL;
 
@@ -3102,13 +3104,13 @@ d_pointer_to_member_type (struct d_info *di)
      substitution, the class of which the function is a member is
      considered part of the type of function."
 
-     For a pointer to member function, this call to cplus_demangle_type
+     For a pointer to member function, this call to d_type
      will end up adding a (possibly qualified) non-member function type to
      the substitution table, which is not correct; however, the member
      function type will never be used in a substitution, so putting the
      wrong type in the substitution table is harmless.  */
 
-  mem = cplus_demangle_type (di);
+  mem = d_type (di);
   if (mem == NULL)
     return NULL;
 
@@ -3241,7 +3243,7 @@ d_template_arg (struct d_info *di)
       return d_template_args (di);
 
     default:
-      return cplus_demangle_type (di);
+      return d_type (di);
     }
 }
 
@@ -3330,7 +3332,7 @@ d_unresolved_name (struct d_info *di)
 	d_advance (di, 1);
     }
   else
-    type = cplus_demangle_type (di);
+    type = d_type (di);
   name = d_unqualified_name (di);
   if (d_peek_char (di) == 'I')
     name = d_make_comp (di, DEMANGLE_COMPONENT_TEMPLATE, name,
@@ -3419,7 +3421,7 @@ d_expression_1 (struct d_info *di)
       struct demangle_component *type = NULL;
       d_advance (di, 2);
       if (peek == 't')
-	type = cplus_demangle_type (di);
+	type = d_type (di);
       if (!d_peek_char (di) || !d_peek_next_char (di))
 	return NULL;
       return d_make_comp (di, DEMANGLE_COMPONENT_INITIALIZER_LIST,
@@ -3441,7 +3443,7 @@ d_expression_1 (struct d_info *di)
 	  di->expansion += op->u.s_operator.op->len - 2;
 	  if (strcmp (code, "st") == 0)
 	    return d_make_comp (di, DEMANGLE_COMPONENT_UNARY, op,
-				cplus_demangle_type (di));
+				d_type (di));
 	}
 
       switch (op->type)
@@ -3497,7 +3499,7 @@ d_expression_1 (struct d_info *di)
 	    if (code == NULL)
 	      return NULL;
 	    if (op_is_new_cast (op))
-	      left = cplus_demangle_type (di);
+	      left = d_type (di);
 	    else if (code[0] == 'f')
 	      /* fold-expression.  */
 	      left = d_operator_name (di);
@@ -3567,7 +3569,7 @@ d_expression_1 (struct d_info *di)
 		if (code[1] != 'w' && code[1] != 'a')
 		  return NULL;
 		first = d_exprlist (di, '_');
-		second = cplus_demangle_type (di);
+		second = d_type (di);
 		if (d_peek_char (di) == 'E')
 		  {
 		    d_advance (di, 1);
@@ -3637,7 +3639,7 @@ d_expr_primary (struct d_info *di)
       enum demangle_component_type t;
       const char *s;
 
-      type = cplus_demangle_type (di);
+      type = d_type (di);
       if (type == NULL)
 	return NULL;
 
@@ -6464,7 +6466,7 @@ d_demangle_callback (const char *mangled, int options,
     switch (type)
       {
       case DCT_TYPE:
-	dc = cplus_demangle_type (&di);
+	dc = d_type (&di);
 	break;
       case DCT_MANGLED:
 	dc = cplus_demangle_mangled_name (&di, 1);
@@ -6999,3 +7001,16 @@ main (int argc, char *argv[])
 }
 
 #endif /* STANDALONE_DEMANGLER */
+
+#ifndef IN_GLIBCPP_V3  /* If NOT defined! */
+
+/* A wrapper for d_type for the purpose of separating external
+   and internal recursive entry points. */ 
+
+struct demangle_component *
+cplus_demangle_type (struct d_info *di)
+{
+   return d_type (di);
+}
+
+#endif
