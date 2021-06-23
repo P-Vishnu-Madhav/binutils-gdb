@@ -147,9 +147,6 @@ extern char *alloca ();
 
 #define CP_STATIC_IF_GLIBCPP_V3 static
 
-#define cplus_demangle_fill_name d_fill_name
-static int d_fill_name (struct demangle_component *, const char *, int);
-
 #define cplus_demangle_fill_extended_operator d_fill_extended_operator
 static int
 d_fill_extended_operator (struct demangle_component *, int,
@@ -183,6 +180,8 @@ static void d_init_info (const char *, int, size_t, struct d_info *);
 #endif /* ! defined(IN_GLIBCPP_V3) */
 
 static struct demangle_component *d_type (struct d_info *);
+
+static int d_fill_name (struct demangle_component *, const char *, int);
 
 /* See if the compiler supports dynamic arrays.  */
 
@@ -856,9 +855,12 @@ d_dump (struct demangle_component *dc, int indent)
 
 /* Fill in a DEMANGLE_COMPONENT_NAME.  */
 
-CP_STATIC_IF_GLIBCPP_V3
+/* This version replaces the old cplus_demangle_fill_name to d_fill_name
+   for separating external and internal recursive entry points. */
+
+static
 int
-cplus_demangle_fill_name (struct demangle_component *p, const char *s, int len)
+d_fill_name (struct demangle_component *p, const char *s, int len)
 {
   if (p == NULL || s == NULL || len <= 0)
     return 0;
@@ -1072,7 +1074,7 @@ d_make_name (struct d_info *di, const char *s, int len)
   struct demangle_component *p;
 
   p = d_make_empty (di);
-  if (! cplus_demangle_fill_name (p, s, len))
+  if (! d_fill_name (p, s, len))
     return NULL;
   return p;
 }
@@ -7011,6 +7013,15 @@ struct demangle_component *
 cplus_demangle_type (struct d_info *di)
 {
    return d_type (di);
+}
+
+/* A wrapper for d_fill_name for the purpose of separating external
+   and internal recursive entry points. */
+
+int
+cplus_demangle_fill_name (struct demangle_component *p, const char *s, int len)
+{
+  return d_fill_name(p,s,len);
 }
 
 #endif
