@@ -147,11 +147,6 @@ extern char *alloca ();
 
 #define CP_STATIC_IF_GLIBCPP_V3 static
 
-#define cplus_demangle_fill_extended_operator d_fill_extended_operator
-static int
-d_fill_extended_operator (struct demangle_component *, int,
-                          struct demangle_component *);
-
 #define cplus_demangle_fill_ctor d_fill_ctor
 static int
 d_fill_ctor (struct demangle_component *, enum gnu_v3_ctor_kinds,
@@ -182,6 +177,10 @@ static void d_init_info (const char *, int, size_t, struct d_info *);
 static struct demangle_component *d_type (struct d_info *);
 
 static int d_fill_name (struct demangle_component *, const char *, int);
+
+static int
+d_fill_extended_operator (struct demangle_component *, int,
+                          struct demangle_component *);
 
 /* See if the compiler supports dynamic arrays.  */
 
@@ -874,10 +873,13 @@ d_fill_name (struct demangle_component *p, const char *s, int len)
 
 /* Fill in a DEMANGLE_COMPONENT_EXTENDED_OPERATOR.  */
 
-CP_STATIC_IF_GLIBCPP_V3
+/* This version replaces the old cplus_demangle_fill_extended_operator to 
+   d_fill_extended_operator for separating external and internal recursive entry points. */
+
+static
 int
-cplus_demangle_fill_extended_operator (struct demangle_component *p, int args,
-                                       struct demangle_component *name)
+d_fill_extended_operator (struct demangle_component *p, int args,
+                          struct demangle_component *name)
 {
   if (p == NULL || args < 0 || name == NULL)
     return 0;
@@ -1123,7 +1125,7 @@ d_make_extended_operator (struct d_info *di, int args,
   struct demangle_component *p;
 
   p = d_make_empty (di);
-  if (! cplus_demangle_fill_extended_operator (p, args, name))
+  if (! d_fill_extended_operator (p, args, name))
     return NULL;
   return p;
 }
@@ -7022,6 +7024,16 @@ int
 cplus_demangle_fill_name (struct demangle_component *p, const char *s, int len)
 {
   return d_fill_name(p,s,len);
+}
+
+/* A wrapper for d_fill_extended_operator for the purpose of separating external
+   and internal recursive entry points. */
+
+int
+cplus_demangle_fill_extended_operator (struct demangle_component *p, int args,
+                                       struct demangle_component *name)
+{
+  return d_fill_extended_operator(p,args,name);
 }
 
 #endif
