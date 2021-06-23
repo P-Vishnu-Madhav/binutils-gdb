@@ -147,9 +147,6 @@ extern char *alloca ();
 
 #define CP_STATIC_IF_GLIBCPP_V3 static
 
-#define cplus_demangle_mangled_name d_mangled_name
-static struct demangle_component *d_mangled_name (struct d_info *, int);
-
 #define cplus_demangle_print d_print
 static char *d_print (int, struct demangle_component *, int, size_t *);
 
@@ -179,6 +176,8 @@ d_fill_ctor (struct demangle_component *, enum gnu_v3_ctor_kinds,
 static int
 d_fill_dtor (struct demangle_component *, enum gnu_v3_dtor_kinds,
              struct demangle_component *);
+
+static struct demangle_component *d_mangled_name (struct d_info *, int);
 
 /* See if the compiler supports dynamic arrays.  */
 
@@ -1229,9 +1228,12 @@ d_make_sub (struct d_info *di, const char *name, int len)
 
    TOP_LEVEL is non-zero when called at the top level.  */
 
-CP_STATIC_IF_GLIBCPP_V3
+/* This version replaces the old cplus_demangle_mangled_name to d_mangled_name 
+   for separating external and internal recursive entry points. */
+
+static
 struct demangle_component *
-cplus_demangle_mangled_name (struct d_info *di, int top_level)
+d_mangled_name (struct d_info *di, int top_level)
 {
   struct demangle_component *p;
 
@@ -3640,7 +3642,7 @@ d_expr_primary (struct d_info *di)
   if (d_peek_char (di) == '_'
       /* Workaround for G++ bug; see comment in write_template_arg.  */
       || d_peek_char (di) == 'Z')
-    ret = cplus_demangle_mangled_name (di, 0);
+    ret = d_mangled_name (di, 0);
   else
     {
       struct demangle_component *type;
@@ -6477,7 +6479,7 @@ d_demangle_callback (const char *mangled, int options,
 	dc = d_type (&di);
 	break;
       case DCT_MANGLED:
-	dc = cplus_demangle_mangled_name (&di, 1);
+	dc = d_mangled_name (&di, 1);
 	break;
       case DCT_GLOBAL_CTORS:
       case DCT_GLOBAL_DTORS:
@@ -6759,7 +6761,7 @@ is_ctor_or_dtor (const char *mangled,
     di.subs = alloca (di.num_subs * sizeof (*di.subs));
 #endif
 
-    dc = cplus_demangle_mangled_name (&di, 1);
+    dc = d_mangled_name (&di, 1);
 
     /* Note that because we did not pass DMGL_PARAMS, we don't expect
        to demangle the entire string.  */
@@ -7061,5 +7063,14 @@ cplus_demangle_fill_dtor (struct demangle_component *p,
 {
   return d_fill_dtor(p,kind,name);
 }  
+
+/* A wrapper for d_mangled_name for the purpose of separating external
+   and internal recursive entry points. */
+
+struct demangle_component *
+cplus_demangle_mangled_name (struct d_info *di, int top_level)
+{
+  return d_mangled_name(di,top_level);
+}
 
 #endif
