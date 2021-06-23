@@ -147,9 +147,6 @@ extern char *alloca ();
 
 #define CP_STATIC_IF_GLIBCPP_V3 static
 
-#define cplus_demangle_print d_print
-static char *d_print (int, struct demangle_component *, int, size_t *);
-
 #define cplus_demangle_print_callback d_print_callback
 static int d_print_callback (int, struct demangle_component *,
                              demangle_callbackref, void *);
@@ -178,6 +175,8 @@ d_fill_dtor (struct demangle_component *, enum gnu_v3_dtor_kinds,
              struct demangle_component *);
 
 static struct demangle_component *d_mangled_name (struct d_info *, int);
+
+static char *d_print (int, struct demangle_component *, int, size_t *);
 
 /* See if the compiler supports dynamic arrays.  */
 
@@ -4450,10 +4449,13 @@ cplus_demangle_print_callback (int options,
    sets *PALC to 0 for a bad parse, or to 1 for a memory allocation
    failure.  */
 
-CP_STATIC_IF_GLIBCPP_V3
+/* This version replaces the old cplus_demangle_print to d_print 
+   for separating external and internal recursive entry points. */
+
+static
 char *
-cplus_demangle_print (int options, struct demangle_component *dc,
-                      int estimate, size_t *palc)
+d_print (int options, struct demangle_component *dc,
+         int estimate, size_t *palc)
 {
   struct d_growable_string dgs;
 
@@ -7071,6 +7073,16 @@ struct demangle_component *
 cplus_demangle_mangled_name (struct d_info *di, int top_level)
 {
   return d_mangled_name(di,top_level);
+}
+
+/* A wrapper for d_print for the purpose of separating external
+   and internal recursive entry points. */
+
+char *
+cplus_demangle_print (int options, struct demangle_component *dc,
+                      int estimate, size_t *palc)
+{
+  return d_print(options,dc,estimate,palc);
 }
 
 #endif
