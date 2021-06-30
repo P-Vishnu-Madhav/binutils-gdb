@@ -87,6 +87,15 @@ struct demangle_builtin_type_info
   enum d_builtin_type_print print;
 };
 
+/* A stack to make sure we remove recursion */
+
+struct stack
+{
+  int top;
+  unsigned int capacity;
+  struct parmlist_frame **base_pointers; //address to the array of base_pointers
+};
+
 /* The information structure we pass around.  */
 
 struct d_info
@@ -129,6 +138,8 @@ struct d_info
   /* If DMGL_NO_RECURSE_LIMIT is not active then this is set to
      the current recursion level.  */
   unsigned int recursion_level;
+
+  struct stack *Stack;
 };
 
 /* To avoid running past the ending '\0', don't:
@@ -138,8 +149,8 @@ struct d_info
    Everything else is safe.  */
 #define d_peek_char(di) (*((di)->n))
 #ifndef CHECK_DEMANGLER
-#  define d_peek_next_char(di) ((di)->n[1])
-#  define d_advance(di, i) ((di)->n += (i))
+#define d_peek_next_char(di) ((di)->n[1])
+#define d_advance(di, i) ((di)->n += (i))
 #endif
 #define d_check_char(di, c) (d_peek_char(di) == c ? ((di)->n++, 1) : 0)
 #define d_next_char(di) (d_peek_char(di) == '\0' ? '\0' : *((di)->n++))
@@ -147,24 +158,24 @@ struct d_info
 
 #ifdef CHECK_DEMANGLER
 static inline char
-d_peek_next_char (const struct d_info *di)
+d_peek_next_char(const struct d_info *di)
 {
   if (!di->n[0])
-    abort ();
+    abort();
   return di->n[1];
 }
 
 static inline void
-d_advance (struct d_info *di, int i)
+d_advance(struct d_info *di, int i)
 {
   if (i < 0)
-    abort ();
+    abort();
   while (i--)
-    {
-      if (!di->n[0])
-	abort ();
-      di->n++;
-    }
+  {
+    if (!di->n[0])
+      abort();
+    di->n++;
+  }
 }
 #endif
 
@@ -182,20 +193,52 @@ extern const struct demangle_operator_info cplus_demangle_operators[];
 
 #define D_BUILTIN_TYPE_COUNT (34)
 
+static void push(struct parmlist_frame *, struct stack *);
+
+static struct parmlist_frame *pop(struct stack *);
+
 CP_STATIC_IF_GLIBCPP_V3
 const struct demangle_builtin_type_info
 cplus_demangle_builtin_types[D_BUILTIN_TYPE_COUNT];
 
 CP_STATIC_IF_GLIBCPP_V3
 struct demangle_component *
-cplus_demangle_mangled_name (struct d_info *, int);
+cplus_demangle_mangled_name(struct d_info *, int);
 
 CP_STATIC_IF_GLIBCPP_V3
 struct demangle_component *
-cplus_demangle_type (struct d_info *);
+cplus_demangle_type(struct d_info *);
 
 extern void
-cplus_demangle_init_info (const char *, int, size_t, struct d_info *);
+cplus_demangle_init_info(const char *, int, size_t, struct d_info *);
 
 /* cp-demangle.c needs to define this a little differently */
 #undef CP_STATIC_IF_GLIBCPP_V3
+
+static void 
+push(struct parmlist_frame *fp_, struct stack *Stack)
+{
+  /* We have to expand stack once it's full */
+  if(Stack->top == Stack->capacity - 1)
+  {
+    Stack->capacity= Stack->capacity*2;
+    Stack->base_pointers=(struct parmlist_frame **)realloc(Stack->base_pointers,Stack->capacity*sizeof(struct parmlist_frame *));
+  }
+  else
+  {
+    Stack->base_pointers[++Stack->top] = fp_;
+  } 
+}
+
+static struct parmlist_frame *
+pop(struct stack *Stack)
+{
+  if(Stack->top == -1)
+  {
+    return ( struct parmlist_frame *)NULL;
+  }
+  else
+  {
+    return Stack->base_pointers[Stack->top--];
+  }
+}

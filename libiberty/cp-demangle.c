@@ -364,6 +364,19 @@ struct d_print_info
   const struct demangle_component *current_template;
 };
 
+/* Structure to help split d_parmlist */
+struct base_frame {
+   int state;
+   struct demangle_component* (*actor) (struct d_info *di, struct parmlist_frame *fp, struct demangle_component *res);
+};
+
+struct parmlist_frame {
+   struct base_frame *base;  // base class in C-speak
+   int parmlist_state;
+   struct demangle_component *tl;
+   struct demangle_component **ptl;
+};
+
 #ifdef CP_DEMANGLE_DEBUG
 static void d_dump (struct demangle_component *, int);
 #endif
@@ -434,7 +447,7 @@ static struct demangle_component *d_operator_name (struct d_info *);
 
 static struct demangle_component *d_special_name (struct d_info *);
 
-static struct demangle_component *d_parmlist (struct d_info *);
+/*static struct demangle_component *d_parmlist (struct d_info *); */
 
 static int d_call_offset (struct d_info *, int);
 
@@ -558,6 +571,12 @@ static void d_print_conversion (struct d_print_info *, int,
 static int d_demangle_callback (const char *, int,
                                 demangle_callbackref, void *);
 static char *d_demangle (const char *, int, size_t *);
+
+static struct demangle_component*
+d_parmlist_setup (struct d_info *);
+
+static struct demangle_component *
+d_parmlist_act (struct d_info *, struct parmlist_frame *, struct demangle_component *);
 
 #define FNQUAL_COMPONENT_CASE				\
     case DEMANGLE_COMPONENT_RESTRICT_THIS:		\
@@ -2812,7 +2831,7 @@ d_cv_qualifiers (struct d_info *di,
 	    {
 	      t = DEMANGLE_COMPONENT_THROW_SPEC;
 	      di->expansion += sizeof "throw";
-	      right = d_parmlist (di);
+	      right = d_parmlist_setup (di);
 	      if (right == NULL)
 		return NULL;
 	      if (! d_check_char (di, 'E'))
@@ -2926,49 +2945,95 @@ d_function_type (struct d_info *di)
 /* <type>+ */
 
 static struct demangle_component *
-d_parmlist (struct d_info *di)
+d_parmlist_setup (struct d_info *di)
 {
-  struct demangle_component *tl;
-  struct demangle_component **ptl;
+  /* Creating a result to pass to d_parmlist_act */
+  struct demangle_component *res;
+  /* Creating a heap stack for base frame */
+  struct base_frame *base = (struct base_frame*) calloc(sizeof(struct base_frame),1);
+  /* Creating a heap stack for d_parmlist frame */
+  struct parmlist_frame *fp_ = (struct parmlist_frame*) calloc(sizeof(struct parmlist_frame),1);
 
-  tl = NULL;
-  ptl = &tl;
-  while (1)
-    {
-      struct demangle_component *type;
+  /* Initializing base and actor */
+  fp_->base = base;
+  fp_->base->actor = d_parmlist_act;
+  push(fp_,di->Stack);
 
-      char peek = d_peek_char (di);
-      if (peek == '\0' || peek == 'E' || peek == '.')
-	break;
-      if ((peek == 'R' || peek == 'O')
-	  && d_peek_next_char (di) == 'E')
-	/* Function ref-qualifier, not a ref prefix for a parameter type.  */
-	break;
-      type = d_type (di);
-      if (type == NULL)
-	return NULL;
-      *ptl = d_make_comp (di, DEMANGLE_COMPONENT_ARGLIST, type, NULL);
-      if (*ptl == NULL)
-	return NULL;
-      ptl = &d_right (*ptl);
-    }
+  /* This while loop will call the actor function on top of the stack
+     which will iterate until the parmlist_state will be equal to -1 */    
+  while(di->Stack->base_pointers[di->Stack->top]->parmlist_state != -1)
+  {
+    res = di->Stack->base_pointers[di->Stack->top]->base->actor(di,fp_,res);
+  }
 
-  /* There should be at least one parameter type besides the optional
+  /* Deallocating the parmlist_frame */
+  struct parmlist_frame *stack_top = pop(di->Stack);
+  free(stack_top);
+  stack_top = (struct parmlist_frame *)NULL;
+  return res;
+}
+
+static struct demangle_component *
+d_parmlist_act(struct d_info *di,struct parmlist_frame *fp_, struct demangle_component *res)
+{
+  struct parmlist_frame *fp = (struct parmlist_frame *)fp_;
+
+  if(fp->parmlist_state==0)
+  {
+    /* Setup the variables for later use */
+    fp->tl = NULL;
+    fp->ptl = &fp->tl;
+    /* Now go to state = 1 */
+    fp->parmlist_state=1;
+    res = *fp->ptl;
+    return res;
+  }
+  else if(fp->parmlist_state==1)
+  {
+    /* process res from d_type */
+    struct demangle_component *type = d_type (di);
+    if (type == NULL)
+      return NULL;
+    *fp->ptl = d_make_comp (di, DEMANGLE_COMPONENT_ARGLIST, type, NULL);
+    if (*fp->ptl == NULL)
+      return NULL;
+    fp->ptl = &d_right (*fp->ptl);
+    /* Do the necessary peeking which is independent of the state */
+    char peek = d_peek_char (di);
+    if (peek == '\0' || peek == 'E' || peek == '.')
+      goto Exit;
+    if ((peek == 'R' || peek == 'O') && d_peek_next_char (di) == 'E')
+    /* Function ref-qualifier, not a ref prefix for a parameter type.  */
+      goto Exit;
+    return *fp->ptl;
+  }
+  else
+  {
+    /* We should never reach this state */
+    exit(EXIT_FAILURE);
+  }
+  
+  Exit: 
+     /* There should be at least one parameter type besides the optional
      return type.  A function which takes no arguments will have a
      single parameter type void.  */
-  if (tl == NULL)
-    return NULL;
+    if (fp->tl == NULL)
+      return NULL;
 
-  /* If we have a single parameter type void, omit it.  */
-  if (d_right (tl) == NULL
-      && d_left (tl)->type == DEMANGLE_COMPONENT_BUILTIN_TYPE
-      && d_left (tl)->u.s_builtin.type->print == D_PRINT_VOID)
-    {
-      di->expansion -= d_left (tl)->u.s_builtin.type->len;
-      d_left (tl) = NULL;
-    }
+    /* If we have a single parameter type void, omit it.  */
+    if (d_right (fp->tl) == NULL
+        && d_left (fp->tl)->type == DEMANGLE_COMPONENT_BUILTIN_TYPE
+        && d_left (fp->tl)->u.s_builtin.type->print == D_PRINT_VOID)
+        {
+          di->expansion -= d_left (fp->tl)->u.s_builtin.type->len;
+          d_left (fp->tl) = NULL;
+        }
 
-  return tl;
+    /* Setting back state to -1 indicating we have successfully finished 
+    the execution */
+    fp->parmlist_state=-1;  
+    res=fp->tl;
+    return res;
 }
 
 /* <bare-function-type> ::= [J]<type>+  */
@@ -2998,7 +3063,7 @@ d_bare_function_type (struct d_info *di, int has_return_type)
   else
     return_type = NULL;
 
-  tl = d_parmlist (di);
+  tl = d_parmlist_setup (di);
   if (tl == NULL)
     return NULL;
 
@@ -3817,7 +3882,7 @@ d_lambda (struct d_info *di)
   if (! d_check_char (di, 'l'))
     return NULL;
 
-  tl = d_parmlist (di);
+  tl = d_parmlist_setup (di);
   if (tl == NULL)
     return NULL;
 
@@ -6411,6 +6476,13 @@ d_init_info (const char *mangled, int options, size_t len,
   di->is_expression = 0;
   di->is_conversion = 0;
   di->recursion_level = 0;
+
+  /* Initializing the stack here */
+  di->Stack = NULL;
+  di->Stack = (struct stack *)calloc(sizeof(struct stack), 1);
+  di->Stack->capacity = 32;
+  di->Stack->top = -1;
+  di->Stack->base_pointers = (struct parmlist_frame **)calloc((di->Stack->capacity)*sizeof(struct parmlist_frame *),1);
 }
 
 /* Internal implementation for the demangler.  If MANGLED is a g++ v3 ABI
